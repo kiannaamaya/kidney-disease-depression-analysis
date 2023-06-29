@@ -1,0 +1,630 @@
+---
+title: "Exploring the Relationship Between Kidney Disease and Depressive Disorders"
+author: "Kianna Hendricks"
+date: "2023-06-04"
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+## Loading libraries
+```{r}
+library(tidyverse)
+library(survey)
+library(gtsummary)
+library(car)
+library(jtools)
+```
+
+## Reading 2021 BRFSS data
+```{r}
+data <- read.csv("LLCP2021.csv", header = TRUE)
+head(data)
+```
+
+## Data management
+```{r}
+#depressive disorders (page 31)
+data$ADDEPEV3[data$ADDEPEV3 == 7 | data$ADDEPEV3 == 9] <- NA
+#kidney disease (page 32)
+data$CHCKDNY2[data$CHCKDNY2 == 7 | data$CHCKDNY2 == 9] <- NA
+#martial status (page 36)
+data$MARITAL[data$MARITAL == 9] <- NA
+#education (page 151)
+data$X_EDUCAG[data$X_EDUCAG == 9] <- NA
+#health insurance (page 133)
+data$X_HLTHPLN[data$X_HLTHPLN == 9] <- NA
+#heart disease (page 28)
+data$CVDCRHD4[data$CVDCRHD4 == 7 | data$CVDCRHD4 == 9] <- NA
+#smoker status (page 153)
+data$X_SMOKER3[data$X_SMOKER3 == 9] <- NA
+#diabetes (page 32)
+data$DIABETE4[data$DIABETE4 == 7 | data$DIABETE4 == 9] <- NA
+#heart attack (page 27)
+data$CVDINFR4[data$CVDINFR4 == 9] <- NA
+#stroke (page 28)
+data$CVDSTRK3[data$CVDSTRK3 == 7 | data$CVDSTRK3 == 9] <- NA
+#high BP (page 134)
+data$X_RFHYPE6[data$X_RFHYPE6 == 9] <- NA
+#heavy drinker (page 156)
+data$X_RFDRHV7[data$X_RFDRHV7 == 9] <- NA
+#binge drinker (page 155)
+data$X_RFBING5[data$X_RFBING5 == 9] <- NA
+#e-cig usage (page 154)
+data$X_CURECI1[data$X_CURECI1 == 9] <- NA 
+#physical activity (page 134)
+data$X_TOTINDA[data$X_TOTINDA == 9] <- NA 
+#physical health status (page 132)
+data$X_PHYS14D[data$X_PHYS14D == 9] <- NA
+```
+
+```{r}
+mod_data<- data %>%
+  rename(
+    depressive_disorders = ADDEPEV3,
+    kidney_disease = CHCKDNY2,
+    sex = SEXVAR,
+    imprace = X_IMPRACE,
+    age = X_AGE_G,
+    marital_status = MARITAL,
+    education = X_EDUCAG,
+    health_insurance = X_HLTHPLN,
+    heart_disease = CVDCRHD4,
+    smoker_status = X_SMOKER3,
+    diabetes = DIABETE4,
+    heart_attack = CVDINFR4,
+    stroke = CVDSTRK3,
+    high_BP = X_RFHYPE6,
+    heavy_drinker = X_RFDRHV7,
+    binge_drinker = X_RFBING5,
+    ecig_usage = X_CURECI1,
+    physical_activity = X_TOTINDA,
+    physical_health_status = X_PHYS14D,
+    weight = X_LLCPWT,
+    strata = X_STSTR,
+  ) %>%
+  mutate_at(vars(depressive_disorders, kidney_disease, health_insurance, heart_disease, diabetes, heart_attack, stroke, sex, physical_activity),
+            ~ if_else(. == 2, 0, .)) %>%
+  mutate_at(vars(high_BP, heavy_drinker, binge_drinker, ecig_usage),
+            ~ if_else(. == 1, 0, 1)) %>%
+  mutate(
+    diabetes = if_else(diabetes == 1, 1, 0),
+    nomiss = !is.na(depressive_disorders) & !is.na(kidney_disease) & !is.na(marital_status) & !is.na(education) & !is.na(health_insurance) & !is.na(heart_disease) & !is.na(smoker_status) & !is.na(diabetes) & !is.na(heart_attack) & !is.na(stroke) & !is.na(high_BP) & !is.na(heavy_drinker) & !is.na(binge_drinker) & !is.na(ecig_usage) & !is.na(physical_activity) & !is.na(physical_health_status) & !is.na(age) & !is.na(imprace) & !is.na(sex) & weight & strata)
+```
+
+```{r}
+# specify the order for selected variables
+new_order <- c("age", "sex", "imprace", "marital_status", "education", "health_insurance", "smoker_status", "ecig_usage", "heavy_drinker", "binge_drinker", "physical_activity", "physical_health_status", "heart_attack", "stroke", "heart_disease", "diabetes", "high_BP", "depressive_disorders")
+
+# reorder selected columns and keep all other columns
+mod_data <- mod_data %>%
+  select(all_of(new_order), everything())
+```
+
+```{r}
+datafortable <- mod_data 
+  datafortable$depressive_disorders <- factor(mod_data$depressive_disorders, levels = c(0, 1), labels = c("Not depressive", "Depressive"))
+
+  datafortable$kidney_disease <- factor(mod_data$kidney_disease, levels = c(0, 1), labels = c("No kidney disease","Kidney disease")) 
+
+  datafortable$age <- factor(mod_data$age, levels = c(1, 2, 3, 4, 5, 6), labels = c("18-24", "25-34", "35-44", "45-54", "55-64", "65+"))
+
+  datafortable$sex <- factor(mod_data$sex, levels = c(1, 0), labels = c("Male", "Female"))
+
+  datafortable$imprace <- factor(mod_data$imprace, levels = c(1, 2, 3, 4, 5, 6),
+                             labels = c("White, non-Hispanic", "Black, non-Hispanic", "Asian, non-Hispanic", "American Indian/Alaskan Native, non-Hispanic", "Hispanic", "Other, non-Hispanic")) 
+
+  datafortable$marital_status <- factor(mod_data$marital_status, levels = c(5, 6, 1, 2, 3, 4), labels = c("Never married", "In a non-marital relationship", "Married", "Divorced", "Widowed", "Separated")) 
+
+  datafortable$education <- factor(mod_data$education, levels = c(1, 2, 3, 4),
+                             labels = c("Did not graduate high school", "Graduated high school", "Attended college or technical school", "Graduated from college or technical school"))
+
+  datafortable$health_insurance <- factor(mod_data$health_insurance, levels = c(1, 0),labels = c("Has health insurance", "No health insurance"))
+
+  datafortable$smoker_status <- factor(mod_data$smoker_status, levels = c(4, 2, 1, 3), labels = c("Never smoked", "Someday smoker", "Everyday smoker", "Former smoker"))
+
+  datafortable$heart_disease <- factor(mod_data$heart_disease, levels = c(0, 1), labels = c("No heart disease", "Heart disease"))
+
+  datafortable$diabetes <- factor(mod_data$diabetes, levels = c(0, 1), labels = c("Non-diabetic", "Diabetic"))
+
+  datafortable$high_BP <- factor(mod_data$high_BP, levels = c(0, 1), labels = c("Non-high BP","High BP"))
+  
+  datafortable$stroke <- factor(mod_data$stroke, levels = c(0, 1), labels = c("Never had a stroke","Had a stroke"))
+  
+  datafortable$stroke_char <- as.character(mod_data$stroke)
+
+  datafortable$heavy_drinker <- factor(mod_data$heavy_drinker, levels = c(0, 1), labels = c("Not a heavy drinker","Heavy drinker"))
+  
+  datafortable$binge_drinker <- factor(mod_data$binge_drinker, levels = c(0, 1), labels = c("Not a binge drinker","Binge drinker"))
+  
+  datafortable$ecig_usage <- factor(mod_data$ecig_usage, levels = c(0, 1), labels = c("Not a current E-cigarrette user","Current E-cigarrette user")) 
+  
+  datafortable$physical_activity <- factor(mod_data$physical_activity, levels = c(0, 1), labels = c("Not physically active in last 30 days","Physically active in last 30 days"))
+  
+  datafortable$physical_health_status <- factor(mod_data$physical_health_status, levels = c(1, 2, 3), labels = c("Zero days with poor health","1-13 days with poor health", "14+ days with poor health"))
+  
+  datafortable$heart_attack <- factor(mod_data$heart_attack, levels = c(0, 1), labels = c("Never had a heart attack","Had a heart attack"))
+```
+
+```{r}
+table(datafortable$heart_attack)
+levels(datafortable$heart_attack)
+```
+```{r}
+table(mod_data$physical_activity)
+```
+
+```{r}
+table(mod_data$physical_health_status)
+```
+
+```{r}
+sum(is.na(mod_data$weight))
+summary(mod_data$weight)
+str(mod_data$weight)
+```
+
+## Create survey design
+According to BRFSS documentation, in R, id should be set to 1.
+```{r}
+options(survey.lonely.psu = "adjust")
+survey_design <- survey::svydesign(id = ~1, strata = ~strata, data = datafortable, weight = ~weight, nest = TRUE)
+```
+
+### Subset survey design without missing data
+```{r}
+survey_design_nomiss <- subset(survey_design, nomiss)
+```
+
+```{r}
+summary(survey_design_nomiss)
+```
+
+## Weight descriptive statistics
+### Depressive Disorders
+```{r}
+svytable(~depressive_disorders, survey_design_nomiss)
+```
+
+### Kidney Disease
+```{r}
+svytable(~kidney_disease, survey_design_nomiss)
+```
+
+### Race/Ethnicity
+```{r}
+svytable(~imprace, survey_design_nomiss)
+```
+
+### Age
+```{r}
+svytable(~age, survey_design_nomiss)
+```
+
+### Sex
+```{r}
+svytable(~sex, survey_design_nomiss)
+```
+
+```{r}
+svytable(~stroke, survey_design_nomiss)
+```
+
+```{r}
+library(ggplot2)
+
+# Construct a histogram of the weights
+ggplot(data = mod_data, mapping = aes(x = weight)) +
+    geom_histogram()
+```
+## Unadjusted regression model
+```{r}
+unadjusted_model <- svyglm(depressive_disorders ~ kidney_disease, family = quasibinomial(), design = survey_design_nomiss)
+```
+
+```{r}
+summary(unadjusted_model)
+```
+
+```{r}
+OR.CI <- cbind("AOR" = exp(coef(unadjusted_model)),
+                       exp(confint(unadjusted_model,
+                           df.resid=degf(unadjusted_model$survey.design))))[-1,]
+round(OR.CI, 3)
+```
+
+## Univariate regression model 
+```{r}
+uvsurvey <-
+  survey_design_nomiss %>%
+  tbl_uvregression(
+                 method = survey::svyglm,
+                 label = list(age ~ "Age (years)", sex ~ "Sex", imprace ~ "Race/Ethnicity", marital_status ~ "Marital Status", education ~ "Education", health_insurance ~ "Health Insurance", smoker_status ~ "Smoker", ecig_usage ~ "E-cigarette usage", heavy_drinker ~ "Heavy Drinker",  binge_drinker ~ "Binge Drinker", physical_activity ~ "Physical Activity", physical_health_status ~ "Physical Health Status", heart_attack ~ "Heart Attack", stroke ~ "Stroke", heart_disease ~ "Heart Disease",  diabetes ~ "Diabetes", high_BP ~ "High Blood Pressure"),
+                 y = depressive_disorders,
+                 method.args = list(family = quasibinomial),
+                 include = c("age", "sex", "imprace", "marital_status", "education", "health_insurance", "smoker_status", "ecig_usage", "heavy_drinker", "binge_drinker", "physical_activity", "physical_health_status", "heart_attack", "stroke", "heart_disease", "diabetes", "high_BP"),
+                 exponentiate = TRUE, 
+                 conf.int = TRUE,
+                 hide_n = TRUE)
+
+# modify the column header
+uvsurvey <- uvsurvey %>%
+  modify_header(label = "**Variable**")
+uvsurvey
+```
+
+## Preliminary regression model
+```{r}
+preliminary_model <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + heart_attack + stroke + high_BP + heavy_drinker + binge_drinker + ecig_usage + physical_activity + physical_health_status, family = quasibinomial(), design = survey_design_nomiss)
+```
+
+```{r}
+OR.CI <- cbind("AOR" = exp(coef(preliminary_model)),
+                       exp(confint(preliminary_model,
+                           df.resid=degf(preliminary_model$survey.design))))[-1,]
+round(OR.CI, 3)
+```
+
+### Complex survey regression summary: Preliminary model
+```{r}
+library(jtools)
+```
+
+```{r}
+summ(preliminary_model, getOption("summ-confint", FALSE), ci.width = getOption("summ-ci.width", 0.95), digits = getOption("jtools-digits", default = 4), pvals = getOption("summ-pvals", TRUE), exp = TRUE, vifs = getOption("summ-vifs", TRUE), preliminary_model.info = getOption("summ-model.info", TRUE), preliminary_model.fit = getOption("summ-model.fit", TRUE), preliminary_model.coefs = getOption("summ-model.coefs", TRUE))
+```
+
+```{r}
+car::Anova(preliminary_model, type = 3, test.statistic = "F",
+           error.df = degf(preliminary_model$survey.design))
+```
+
+```{r}
+car::Anova(preliminary_model, type = 2, test.statistic = "F",
+           error.df = degf(preliminary_model$survey.design))
+```
+
+## Second logistic regression model
+```{r}
+second_model <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status, family = quasibinomial(), design = survey_design_nomiss)
+```
+
+### Complex survey regression summary: Second model
+```{r}
+summ(second_model, getOption("summ-confint", FALSE), ci.width = getOption("summ-ci.width", 0.95), digits = getOption("jtools-digits", default = 4), pvals = getOption("summ-pvals", TRUE), exp = TRUE, vifs = getOption("summ-vifs", TRUE), second_model.info = getOption("summ-model.info", TRUE), second_model.fit = getOption("summ-model.fit", TRUE), second_model.coefs = getOption("summ-model.coefs", TRUE))
+```
+
+
+## Addressing potentional interactions
+```{r}
+basic_model <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status, family = quasibinomial(), design = survey_design_nomiss)
+```
+
+### Sex interaction model
+```{r}
+interac_model_1 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:sex, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_1)
+```
+
+####Plotting interaction for sex
+```{r}
+library(interactions)
+cat_plot(interac_model_1, pred = sex, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+```
+
+### Race interaction model
+```{r}
+interac_model_2 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:imprace, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_2)
+```
+
+####Plotting interaction for race
+There is a bit of evidence of interactions here which does make sense.
+```{r}
+cat_plot(interac_model_2, pred = imprace, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+```
+
+### Age interaction model
+```{r}
+interac_model_3 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:age, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_3)
+```
+
+####Plotting interaction for age
+```{r}
+cat_plot(interac_model_3, pred = age, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+```
+
+### Marital status interaction model
+```{r}
+interac_model_4 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:marital_status, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_4)
+```
+
+####Plotting interaction for Marital status
+```{r}
+cat_plot(interac_model_4, pred = marital_status, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+```
+
+### Education interaction model
+```{r}
+interac_model_5 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:education, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_5)
+```
+
+####Plotting interaction for Education
+```{r}
+cat_plot(interac_model_5, pred = education, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+```
+
+### Health insurance interaction model
+```{r}
+interac_model_6 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:health_insurance, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_6)
+```
+
+####Plotting interaction for health insurance
+```{r}
+interac_plot_6 <- cat_plot(interac_model_6, pred = health_insurance, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+interac_plot_6
+ggsave("interact_plot_6.png", interac_plot_6, width = 10, height = 7, dpi = 300)
+```
+
+### Heart disease interaction model
+```{r}
+interac_model_7 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:heart_disease, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_7)
+```
+
+####Plotting interaction for heart disease
+```{r}
+cat_plot(interac_model_7, pred = heart_disease, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+```
+
+### Smoker interaction model
+```{r}
+interac_model_8 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:smoker_status, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_8)
+```
+
+####Plotting interaction for smoker
+```{r}
+cat_plot(interac_model_8, pred = smoker_status, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+```
+
+### Diabetes interaction model
+```{r}
+interac_model_9 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:diabetes, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_9)
+```
+
+####Plotting interaction for diabetes
+```{r}
+interac_plot_9 <- cat_plot(interac_model_9, pred = diabetes, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+interac_plot_9
+ggsave("interac_plot_9.png", interac_plot_6, width = 10, height = 7, dpi = 300)
+```
+
+### Stroke interaction model
+```{r}
+interac_model_10 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:stroke, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_10)
+```
+
+####Plotting interaction for stroke
+```{r}
+interac_plot_10 <- cat_plot(interac_model_10, pred = stroke, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+interac_plot_10
+ggsave("interac_plot_10.png", interac_plot_6, width = 10, height = 7, dpi = 300)
+```
+
+### High bp interaction model
+```{r}
+interac_model_11 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:high_BP, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_11)
+```
+
+####Plotting interaction for high bp
+```{r}
+interac_plot_11 <- cat_plot(interac_model_11, pred = high_BP, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+interac_plot_11
+ggsave("interac_plot_11.png", interac_plot_6, width = 10, height = 7, dpi = 300)
+```
+
+### Heavy drinker interaction model
+```{r}
+interac_model_12 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:heavy_drinker, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_12)
+```
+
+####Plotting interaction for heavy drinker
+```{r}
+interac_plot_12 <- cat_plot(interac_model_12, pred = heavy_drinker, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+interac_plot_12
+ggsave("interac_plot_12.png", interac_plot_6, width = 10, height = 7, dpi = 300)
+```
+
+### E-cig interaction model
+```{r}
+interac_model_13 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:ecig_usage, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_13)
+```
+
+####Plotting interaction for e-cig
+```{r}
+cat_plot(interac_model_13, pred = ecig_usage, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+```
+
+
+### Physical activity interaction model
+```{r}
+interac_model_14 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:physical_activity, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_14)
+```
+
+####Plotting interaction for Physical activity
+```{r}
+interac_plot_14 <- cat_plot(interac_model_14, pred = physical_activity, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+interac_plot_14
+ggsave("interac_plot_14.png", interac_plot_6, width = 10, height = 7, dpi = 300)
+
+```
+
+### Physical health interaction model
+```{r}
+interac_model_15 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:physical_health_status, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_15)
+```
+
+####Plotting interaction for physical health 
+```{r}
+interac_plot_15 <- cat_plot(interac_model_15, pred = physical_health_status, modx = kidney_disease, colors = c("firebrick4", "steelblue4"), point.shape = TRUE)
+interac_plot_15
+ggsave("interac_plot_15.png", interac_plot_6, width = 10, height = 7, dpi = 300)
+
+```
+
+```{r}
+interac_model_16 <- svyglm(depressive_disorders ~ kidney_disease + sex + imprace + age + marital_status + education + health_insurance + heart_disease + smoker_status + diabetes + stroke + high_BP + heavy_drinker + ecig_usage + physical_activity + physical_health_status + kidney_disease:high_BP + kidney_disease:diabetes, family = quasibinomial(), design = survey_design_nomiss)
+
+summary(interac_model_16)
+```
+
+### Choosing "best" final model
+```{r}
+aic_values <- rbind(extractAIC(unadjusted_model),
+                    extractAIC(preliminary_model),
+                    extractAIC(second_model),
+                    extractAIC(interac_model_9),
+                    extractAIC(interac_model_11),
+                    extractAIC(interac_model_16))
+
+colnames(aic_values) <- c("Eff.P", "AIC")
+rownames(aic_values) <- c("Unadjusted Model", "Preliminary Model", "Second Model", "Interaction Model 9", "Interaction Model 11", "Interaction Model 16")
+
+aic_values
+
+aic_matrix <- matrix(unlist(aic_values), ncol = 3, byrow = TRUE)
+
+aic_df <- as.data.frame(aic_matrix)
+colnames(aic_df) <- c("Eff.P", "AIC")
+
+rownames(aic_df) <- c("Unadjusted Model", "Preliminary Model", "Second Model", "Interaction Model 9", "Interaction Model 11", "Interaction Model 16")
+
+aic_values_sorted <- aic_df[order(aic_values$AIC), ]
+```
+
+
+```{r}
+aic_df_sorted
+
+```
+
+```{r}
+str(aic_values)
+```
+
+## Creating Tables
+
+```{r}
+depressive_summary <- survey_design_nomiss %>% 
+  tbl_svysummary(
+    # Use a character variable here. A factor leads to an error
+    by = depressive_disorders,
+    # Use include to select variables
+    include = c(kidney_disease, sex, imprace, age, marital_status, education, health_insurance, heart_disease, smoker_status, diabetes, heart_attack, stroke_char, high_BP, heavy_drinker, binge_drinker, ecig_usage, physical_activity, physical_health_status),
+    statistic = list(all_categorical() ~ "{n_unweighted}    ({p}%)")
+  ) %>%
+  modify_header(label = "**Variable**",
+    all_stat_cols() ~ "**{level}**<br>N = {n_unweighted} ({style_percent(p, digits=1)}%)") %>%
+  modify_caption("Weighted descriptive statistics, by depressive disorders") %>%
+  bold_labels() %>%
+  add_p()
+
+depressive_summary
+
+kidney_summary <- survey_design_nomiss %>% 
+  tbl_svysummary(
+    # Use a character variable here. A factor leads to an error
+    by = kidney_disease,
+    # Use include to select variables
+    include = c(sex, imprace, age, marital_status, education, health_insurance, heart_disease, smoker_status, diabetes, heart_attack, stroke_char, high_BP, heavy_drinker, binge_drinker, ecig_usage, physical_activity, physical_health_status),
+    statistic = list(all_categorical() ~ "{n_unweighted}    ({p}%)")
+  ) %>%
+  modify_header(label = "**Variable**",
+    all_stat_cols() ~ "**{level}**<br>N = {n_unweighted} ({style_percent(p, digits=1)}%)") %>%
+  modify_caption("Weighted descriptive statistics, by depressive disorders") %>%
+  bold_labels() %>%
+  add_p()
+
+kidney_summary
+```
+
+
+```{r}
+unadjusted_model_table <- tbl_regression(unadjusted_model, exponentiate = TRUE, conf.int = TRUE, label = list(kidney_disease ~ "Kidney Disease"))
+
+unadjusted_model_table
+```
+
+```{r}
+second_model_table <- tbl_regression(second_model, exponentiate = TRUE, conf.int = TRUE, label = list(kidney_disease ~ "Kidney Disease", age ~ "Age (years)", sex ~ "Sex", imprace ~ "Race/Ethnicity", marital_status ~ "Marital Status", education ~ "Education", health_insurance ~ "Health Insurance", smoker_status ~ "Smoker", ecig_usage ~ "E-cigarette User", heavy_drinker ~ "Heavy Drinker", physical_health_status ~ "Physical Health Status", physical_activity ~ "Physical Activity", stroke ~ "Stroke", diabetes ~ "Diabetes", heart_disease ~ "Heart Disease", high_BP ~ "High Blood Pressure"))
+second_model_table
+```
+
+```{r}
+final_model_table <- tbl_regression(interac_model_11, exponentiate = TRUE, conf.int = TRUE, label = list(kidney_disease ~ "Kidney Disease", age ~ "Age (years)", sex ~ "Sex", imprace ~ "Race/Ethnicity", marital_status ~ "Marital Status", education ~ "Education", health_insurance ~ "Health Insurance", smoker_status ~ "Smoker", heavy_drinker ~ "Heavy Drinker", ecig_usage ~ "E-cigarette User", physical_health_status ~ "Physical Health Status", physical_activity ~ "Physical Activity", stroke ~ "Stroke", diabetes ~ "Diabetes", heart_disease ~ "Heart Disease", high_BP ~ "High Blood Pressure"))
+final_model_table
+```
+
+```{r}
+merged_table <- tbl_merge(list(unadjusted_model_table, preliminary_model, final_model_table),
+          tab_spanner = c("Model I", "Model II", "Model III")) 
+
+# modify the column header
+merged_table <- merged_table %>%
+  modify_header(label = "**Variable**")
+
+merged_table
+```
+
+```{r}
+uvsurvey %>%
+  as_tibble() %>%
+  write_csv("uv_survey_table.csv")
+```
+
+```{r}
+depressive_summary %>%
+  as_tibble() %>%
+  write_csv("depressive_summary_table.csv")
+
+kidney_summary %>%
+  as_tibble() %>%
+  write_csv("kidney_summary_table.csv")
+```
+
+
+```{r}
+merged_table %>%
+  as_tibble() %>%
+  write_csv("merged_model_table.csv")
+```
+
+
