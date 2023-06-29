@@ -1,5 +1,5 @@
 ---
-title: "Exploring the Relationship Between Kidney Disease and Depressive Disorders"
+title: "Exploring the Association Between Kidney Disease and Depressive Disorders"
 author: "Kianna Hendricks"
 date: "2023-06-29"
 ---
@@ -52,9 +52,9 @@ data$X_RFDRHV7[data$X_RFDRHV7 == 9] <- NA
 #binge drinker (page 155)
 data$X_RFBING5[data$X_RFBING5 == 9] <- NA
 #e-cig usage (page 154)
-data$X_CURECI1[data$X_CURECI1 == 9] <- NA 
+data$X_CURECI1[data$X_CURECI1 == 9] <- NA
 #physical activity (page 134)
-data$X_TOTINDA[data$X_TOTINDA == 9] <- NA 
+data$X_TOTINDA[data$X_TOTINDA == 9] <- NA
 #physical health status (page 132)
 data$X_PHYS14D[data$X_PHYS14D == 9] <- NA
 ```
